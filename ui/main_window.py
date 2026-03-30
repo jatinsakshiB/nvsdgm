@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
         # Init Pages
         self.page_dashboard = DashboardWidget(self.db, self.device_service)
         self.page_devices = DeviceManagerWidget(self.db, self.device_service)
-        self.page_registers = RegisterManagerWidget(self.db)
+        self.page_registers = RegisterManagerWidget(self.db, self.device_service)
         self.page_charts = RealTimeChartWidget(self.db)
         self.page_logs = LogsPanelWidget()
         

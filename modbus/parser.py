@@ -11,6 +11,7 @@ class ModbusParser:
         if not registers:
             return 0.0
 
+        data_type = data_type.lower()
         decoder = BinaryPayloadDecoder.fromRegisters(registers, byteorder=byteorder, wordorder=wordorder)
         
         try:
@@ -36,6 +37,7 @@ class ModbusParser:
     @staticmethod
     def get_register_count(data_type: str) -> int:
         """Returns the number of 16-bit registers required for a data type."""
+        data_type = data_type.lower()
         if data_type in ['int16', 'uint16']:
             return 1
         elif data_type in ['int32', 'uint32', 'float32']:

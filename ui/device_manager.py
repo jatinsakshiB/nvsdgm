@@ -234,9 +234,18 @@ class DeviceManagerWidget(QWidget):
         dialog.add_device_requested.connect(self.on_add_from_scan)
         dialog.exec()
 
-    def on_add_from_scan(self, ip, port):
-        # Open the standard Add dialog but with IP/Port pre-filled
-        dialog = DeviceDialog(initial_ip=ip, initial_port=port, parent=self)
+    def on_add_from_scan(self, params):
+        # Open the standard Add dialog but with params pre-filled
+        if params["connection_type"] == "TCP":
+            dialog = DeviceDialog(initial_ip=params["ip_address"], initial_port=params["port"], parent=self)
+        else:
+            # Create a dummy device to load RTU params easily or add initial_rtu_params to DeviceDialog
+            # For simplicity, let's just use initial_ip as COM port and initial_port as baud for and distinguish
+            dialog = DeviceDialog(parent=self)
+            dialog.type_combo.setCurrentText("RTU")
+            dialog.com_input.setText(params["com_port"])
+            dialog.baud_input.setText(str(params["baud_rate"]))
+            
         if dialog.exec() == QDialog.Accepted:
             try:
                 new_dev = dialog.get_device()

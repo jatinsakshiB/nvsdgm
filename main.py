@@ -21,8 +21,24 @@ def check_authorization():
         print(f"Authorization check failed: {e}")
     return False
 
+def get_app_data_path():
+    """Returns the platform-specific path to store application data."""
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA", os.path.expanduser("~"))
+    elif sys.platform == "darwin":
+        base = os.path.expanduser("~/Library/Application Support")
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    
+    path = os.path.join(base, "NVSDGM")
+    if not os.path.exists(path):
+        os.makedirs(path)
+    return path
+
 def main():
-    db_path = os.path.join(os.path.dirname(__file__), "gas_analyzer.db")
+    # Use persistent AppData for the database
+    data_dir = get_app_data_path()
+    db_path = os.path.join(data_dir, "gas_analyzer.db")
     
     app = QApplication(sys.argv)
     app.setApplicationName("NVSDGM")

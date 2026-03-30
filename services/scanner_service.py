@@ -6,14 +6,22 @@ from typing import List, Dict, Any, Optional, Callable
 from dataclasses import dataclass, field
 from concurrent.futures import ThreadPoolExecutor
 
-from pymodbus.client import ModbusTcpClient
+from pymodbus.client import ModbusTcpClient, ModbusSerialClient
 from models.device import Device
+
+try:
+    import serial.tools.list_ports
+    HAS_SERIAL = True
+except ImportError:
+    HAS_SERIAL = False
 
 @dataclass
 class ScanResult:
-    ip: str
+    ip: str = ""
+    port_name: str = "" # For RTU
+    baud_rate: int = 0   # For RTU
     is_online: bool = False  # Ping or TCP success
-    port_open: bool = False  # Port 502 open
+    port_open: bool = False  # Port 502 open or COM accessible
     is_modbus: bool = False  # Valid Modbus response
     response_time: float = 0.0
     status_msg: str = "Offline"
@@ -46,6 +54,19 @@ class ScannerService:
         if len(parts) == 4:
             return '.'.join(parts[:-1])
         return "192.168.1"
+
+    def list_com_ports(self) -> List[Dict[str, str]]:
+        """List all available serial ports."""
+        if not HAS_SERIAL:
+            return []
+        ports = []
+        for p in serial.tools.list_ports.comports():
+            ports.append({
+                "device": p.device,
+                "description": p.description,
+                "hwid": p.hwid
+            })
+        return ports
 
     async def scan_subnet(self, subnet: str, progress_callback: Optional[Callable[[int, int], None]] = None) -> List[ScanResult]:
         self._stop_requested = False
@@ -173,3 +194,109 @@ class ScannerService:
             sock.close()
             
         return result
+
+    def scan_usb_port(self, port: str, progress_callback: Optional[Callable[[int, int], None]] = None) -> List[ScanResult]:
+        """Scan a single USB port across common baud rates."""
+        common_bauds = [9600, 19200, 38400, 57600, 115200]
+        results = []
+        total = len(common_bauds)
+        
+        self._stop_requested = False
+        for i, baud in enumerate(common_bauds):
+            if self._stop_requested:
+                break
+                
+            res = ScanResult(port_name=port, baud_rate=baud)
+            res.add_log(f"Probing {port} at {baud} baud...")
+            
+            # Use short timeout for scanning
+            client = ModbusSerialClient(
+                port=port,
+                baudrate=baud,
+                timeout=0.5,
+                parity='N',
+                stopbits=1,
+                bytesize=8
+            )
+            
+            start = time.time()
+            try:
+                if client.connect():
+                    res.port_open = True
+                    # Handshake
+                    response = client.read_holding_registers(address=0, count=1, slave=1)
+                    res.response_time = (time.time() - start) * 1000
+                    
+                    if not response.isError():
+                        res.is_modbus = True
+                        res.is_online = True
+                        res.status_msg = "Modbus Device ✅"
+                        res.add_log(f"Success! Found Modbus device at {baud} baud.")
+                    else:
+                        # Could be wrong baud or just no device at ID 1
+                        res.status_msg = "Port Open, Handshake Failed"
+                        res.add_log(f"Port opened at {baud} but Modbus check failed: {response}")
+                    
+                    client.close()
+                else:
+                    res.status_msg = "Could not open port"
+            except Exception as e:
+                res.status_msg = f"Error: {str(e)}"
+            
+            results.append(res)
+            if progress_callback:
+                progress_callback(i + 1, total)
+                
+        return results
+
+    def discover_registers(self, client_params: Dict[str, Any], start: int = 0, count: int = 100, fc: int = 3, 
+                           progress_callback: Optional[Callable[[int, int], None]] = None) -> List[Dict[str, Any]]:
+        """Identify which registers are active in a given range."""
+        found = []
+        self._stop_requested = False
+        
+        # Create a temporary client for discovery
+        if "ip_address" in client_params:
+            client = ModbusTcpClient(host=client_params["ip_address"], port=client_params.get("port", 502), timeout=1.0)
+        else:
+            client = ModbusSerialClient(
+                port=client_params["port"], 
+                baudrate=client_params["baud_rate"],
+                timeout=1.0,
+                parity=client_params.get("parity", 'N'),
+                stopbits=client_params.get("stop_bits", 1),
+                bytesize=8
+            )
+
+        try:
+            if not client.connect():
+                return []
+
+            # We'll read one by one to pinpoint exactly where data exists
+            for i in range(start, start + count):
+                if self._stop_requested:
+                    break
+                    
+                try:
+                    if fc == 3:
+                        res = client.read_holding_registers(address=i, count=1, slave=1)
+                    elif fc == 4:
+                        res = client.read_input_registers(address=i, count=1, slave=1)
+                    else:
+                        break
+                    
+                    if not res.isError():
+                        found.append({
+                            "address": i,
+                            "value": res.registers[0],
+                            "type": "Holding" if fc == 3 else "Input"
+                        })
+                except Exception:
+                    pass
+                    
+                if progress_callback:
+                    progress_callback(i - start + 1, count)
+        finally:
+            client.close()
+                
+        return found

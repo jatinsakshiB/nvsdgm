@@ -6,6 +6,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 from database.sqlite_manager import SQLiteManager
 from models.register import Register
+from services.device_service import DeviceService
+from ui.register_discovery_dialog import RegisterDiscoveryDialog
 import pandas as pd
 
 class RegisterDialog(QDialog):
@@ -97,9 +99,10 @@ class RegisterDialog(QDialog):
 class RegisterManagerWidget(QWidget):
     registers_changed = Signal()
 
-    def __init__(self, db: SQLiteManager, parent=None):
+    def __init__(self, db: SQLiteManager, device_service: DeviceService = None, parent=None):
         super().__init__(parent)
         self.db = db
+        self.device_service = device_service
         
         layout = QVBoxLayout(self)
         
@@ -121,6 +124,13 @@ class RegisterManagerWidget(QWidget):
         toolbar.addWidget(del_btn)
         toolbar.addWidget(import_btn)
         toolbar.addWidget(refresh_btn)
+        
+        toolbar.addSpacing(20)
+        discover_btn = QPushButton("Auto Discover")
+        discover_btn.setStyleSheet("background-color: #722ed1; color: white; font-weight: bold;")
+        discover_btn.clicked.connect(self.on_discover)
+        toolbar.addWidget(discover_btn)
+        
         toolbar.addStretch()
         
         layout.addLayout(toolbar)
@@ -199,6 +209,36 @@ class RegisterManagerWidget(QWidget):
             self.db.delete_register(reg_id)
             self.load_data()
             self.registers_changed.emit()
+    def on_discover(self):
+        # We need a device to scan. Let's ask the user which device to discover registers for.
+        devices = self.db.get_devices()
+        if not devices:
+            QMessageBox.warning(self, "No Devices", "Please add a device first.")
+            return
+            
+        from PySide6.QtWidgets import QInputDialog
+        names = [f"{d.name} (ID: {d.id})" for d in devices]
+        name, ok = QInputDialog.getItem(self, "Select Device", "Select device to scan registers:", names, 0, False)
+        if not ok: return
+        
+        device = devices[names.index(name)]
+        
+        # Prepare params for scanner
+        params = {}
+        if device.connection_type == "TCP":
+            params = {"ip_address": device.ip_address, "port": device.port}
+        else:
+            params = {
+                "port": device.com_port, 
+                "baud_rate": device.baud_rate,
+                "parity": device.parity,
+                "stop_bits": device.stop_bits
+            }
+            
+        dialog = RegisterDiscoveryDialog(device.id, params, self.db, self)
+        dialog.registers_added.connect(self.load_data)
+        dialog.registers_added.connect(self.registers_changed.emit)
+        dialog.exec()
 
     def on_import(self):
         file, _ = QFileDialog.getOpenFileName(self, "Open Excel File", "", "Excel Files (*.xlsx *.xls)")

@@ -3,12 +3,28 @@ from pymodbus.datastore import ModbusSlaveContext, ModbusServerContext, ModbusSp
 import threading
 import time
 import random
+import subprocess
+import os
+
+def free_port(port):
+    """Checks if a port is in use and kills the process using it."""
+    try:
+        # Check if port is in use and get PIDs using lsof
+        result = subprocess.check_output(["lsof", "-ti", f":{port}"], stderr=subprocess.STDOUT)
+        pids = result.decode().strip().split('\n')
+        for pid in pids:
+            if pid:
+                print(f"Port {port} is busy (PID: {pid}). Freeing up...")
+                subprocess.run(["kill", "-9", pid])
+                time.sleep(1) # Wait for port to clear
+    except subprocess.CalledProcessError:
+        # Port is not in use
+        pass
+    except Exception as e:
+        print(f"Error checking port {port}: {e}")
 
 # -----------------------------
 # Create Holding Registers
-# 0 = 40001 → Gas
-# 1 = 40002 → Temperature
-# 2 = 40003 → Pressure
 # -----------------------------
 store = ModbusSlaveContext(
     hr=ModbusSparseDataBlock({
@@ -47,5 +63,7 @@ thread.start()
 # -----------------------------
 # Start Modbus TCP Server
 # -----------------------------
-print("Modbus Fake Server Running on port 5020...")
-StartTcpServer(context, address=("0.0.0.0", 5022))
+PORT = 502
+free_port(PORT)
+print(f"Modbus Fake Server Running on port {PORT}...")
+StartTcpServer(context, address=("0.0.0.0", PORT))
