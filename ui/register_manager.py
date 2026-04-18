@@ -241,10 +241,22 @@ class RegisterManagerWidget(QWidget):
                 "parity": device.parity,
                 "stop_bits": device.stop_bits
             })
+        
+        # RELEASE PORT before starting scan
+        if device.connection_type == "RTU":
+            self.device_service.disconnect_by_port(device.com_port)
+            import time
+            time.sleep(0.1) # Small delay for hardware cleanup
             
         dialog = RegisterDiscoveryDialog(device.id, params, self.db, self.logger, self)
-        dialog.registers_added.connect(self.load_data)
-        dialog.registers_added.connect(self.registers_changed.emit)
+        
+        def on_dialog_closed():
+            # RESUME polling
+            self.device_service.add_client(device)
+            self.load_data()
+            self.registers_changed.emit()
+            
+        dialog.finished.connect(on_dialog_closed)
         dialog.setModal(False) # Ensure non-blocking
         dialog.show()
         # Keep reference to prevent GC
@@ -262,7 +274,21 @@ class RegisterManagerWidget(QWidget):
         from ui.hardware_diagnostic_dialog import HardwareDiagnosticDialog
         # Use first RTU device port as default
         port = rtu_devices[0].com_port
+        
+        # RELEASE PORT before starting scan
+        self.device_service.disconnect_by_port(port)
+        import time
+        time.sleep(0.1)
+        
         dialog = HardwareDiagnosticDialog(port, self.logger, self)
+        
+        def on_diag_closed():
+            # RESUME all RTU devices on this port
+            for d in rtu_devices:
+                if d.com_port == port:
+                    self.device_service.add_client(d)
+        
+        dialog.finished.connect(on_diag_closed)
         dialog.exec()
 
     def on_import(self):

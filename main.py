@@ -43,6 +43,17 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("NVSDGM")
     
+    # --- Single Instance Guard ---
+    from PySide6.QtCore import QLockFile
+    lock_file_path = os.path.join(data_dir, "nvsdgm.lock")
+    lock_file = QLockFile(lock_file_path)
+    
+    if not lock_file.tryLock(100): # Try for 100ms
+        QMessageBox.critical(None, "Already Running", 
+                             "Another instance of NVSDGM is already running.\n"
+                             "Please close it or check Task Manager/Activity Monitor and try again.")
+        sys.exit(1)
+    
     if not check_authorization():
         QMessageBox.critical(None, "Error", "Internet error or service disabled. Please check your connection or contact support.")
         sys.exit(1)

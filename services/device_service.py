@@ -61,3 +61,15 @@ class DeviceService:
             
         if device.is_enabled:
             self.add_client(device)
+    def disconnect_by_port(self, port_name: str):
+        """Find and disconnect any RTU client using the specified port."""
+        to_remove = []
+        for dev_id, client in self.clients.items():
+            # Check if it's an RTU client and matches the port
+            if hasattr(client, 'device') and client.device.connection_type == "RTU":
+                if client.device.com_port == port_name:
+                    to_remove.append(dev_id)
+        
+        for dev_id in to_remove:
+            self.logger.info(f"Temporarily releasing port {port_name} for device {dev_id}", "DeviceService")
+            self.remove_client(dev_id)
