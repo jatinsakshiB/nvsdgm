@@ -131,7 +131,26 @@ class ScannerDialog(QDialog):
         port_box.addWidget(self.scan_usb_btn)
         
         layout.addLayout(port_box)
+        
+        # Diagnostic Button
+        self.diag_btn = QPushButton("🆘 Deep Hardware Diagnostic")
+        self.diag_btn.setStyleSheet("background-color: #f0883e; color: white; font-weight: bold; padding: 5px;")
+        self.diag_btn.clicked.connect(self.open_diagnostic)
+        layout.addWidget(self.diag_btn)
+        
         layout.addStretch()
+
+    def open_diagnostic(self):
+        from ui.hardware_diagnostic_dialog import HardwareDiagnosticDialog
+        port = self.port_combo.currentData()
+        if not port:
+            QMessageBox.warning(self, "No Port", "Please select a COM/USB port first.")
+            return
+        
+        # Use existing logger if available in parent, else None
+        logger = getattr(self.parent(), 'logger', None)
+        dialog = HardwareDiagnosticDialog(port, logger, self)
+        dialog.exec()
 
     def refresh_ports(self):
         self.port_combo.clear()

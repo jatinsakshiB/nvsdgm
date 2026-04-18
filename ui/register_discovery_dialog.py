@@ -86,6 +86,12 @@ class RegisterDiscoveryDialog(QDialog):
         self.scan_btn.clicked.connect(self.start_discovery)
         settings_layout.addWidget(self.scan_btn)
         
+        self.trouble_btn = QPushButton("❓ Troubleshoot")
+        self.trouble_btn.setStyleSheet("background-color: #f0883e; color: white; font-weight: bold; padding: 5px 15px;")
+        self.trouble_btn.clicked.connect(self.open_diagnostic)
+        self.trouble_btn.setVisible(False)
+        settings_layout.addWidget(self.trouble_btn)
+        
         layout.addLayout(settings_layout)
         
         # Progress
@@ -173,9 +179,20 @@ class RegisterDiscoveryDialog(QDialog):
         
         if not results and not self.scanner._stop_requested:
             self.add_log("❌ No registers found or connection failed. Check your Slave ID and connection settings.")
+            self.trouble_btn.setVisible(True)
             
         self.update_table()
         self.add_btn.setEnabled(len(results) > 0)
+
+    def open_diagnostic(self):
+        from ui.hardware_diagnostic_dialog import HardwareDiagnosticDialog
+        port = self.client_params.get("port")
+        if not port:
+            # Fallback for TCP or if port missing
+            port = self.client_params.get("ip_address")
+            
+        dialog = HardwareDiagnosticDialog(port, self.logger, self)
+        dialog.exec()
 
     def update_table(self):
         self.table.setRowCount(0)

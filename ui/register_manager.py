@@ -99,9 +99,10 @@ class RegisterDialog(QDialog):
 class RegisterManagerWidget(QWidget):
     registers_changed = Signal()
 
-    def __init__(self, db: SQLiteManager, device_service: DeviceService = None, parent=None):
+    def __init__(self, db: SQLiteManager, logger: Any = None, device_service: DeviceService = None, parent=None):
         super().__init__(parent)
         self.db = db
+        self.logger = logger
         self.device_service = device_service
         
         layout = QVBoxLayout(self)
@@ -130,6 +131,10 @@ class RegisterManagerWidget(QWidget):
         discover_btn.setStyleSheet("background-color: #722ed1; color: white; font-weight: bold;")
         discover_btn.clicked.connect(self.on_discover)
         toolbar.addWidget(discover_btn)
+        
+        help_btn = QPushButton("❓ Hardware Help")
+        help_btn.clicked.connect(self.on_hardware_help)
+        toolbar.addWidget(help_btn)
         
         toolbar.addStretch()
         
@@ -245,7 +250,20 @@ class RegisterManagerWidget(QWidget):
         # Keep reference to prevent GC
         self._discover_dialog = dialog
 
-    def on_import(self):
+    def on_hardware_help(self):
+        # Scan for devices to get a port
+        devices = self.db.get_devices()
+        rtu_devices = [d for d in devices if d.connection_type == "RTU"]
+        
+        if not rtu_devices:
+            QMessageBox.information(self, "Hardware Help", "This tool is for USB/Serial (RS485) troubleshooting. Please add an RTU device first.")
+            return
+            
+        from ui.hardware_diagnostic_dialog import HardwareDiagnosticDialog
+        # Use first RTU device port as default
+        port = rtu_devices[0].com_port
+        dialog = HardwareDiagnosticDialog(port, self.logger, self)
+        dialog.exec()
         file, _ = QFileDialog.getOpenFileName(self, "Open Excel File", "", "Excel Files (*.xlsx *.xls)")
         if not file: return
         

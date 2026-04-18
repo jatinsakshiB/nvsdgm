@@ -346,4 +346,74 @@ class ScannerService:
         finally:
             client.close()
                 
-        return found
+    def diagnostic_sweep(self, port: str, 
+                         progress_callback: Optional[Callable[[int, int], None]] = None,
+                         log_callback: Optional[Callable[[str], None]] = None,
+                         global_logger: Optional[Any] = None) -> Optional[Dict[str, Any]]:
+        """
+        Deep scan of a serial port to find any Modbus device by trying all common
+        baud rates, parities, and Slave IDs.
+        """
+        self._stop_requested = False
+        common_bauds = [9600, 19200, 38400, 57600, 115200]
+        common_parities = ['N', 'E', 'O']
+        # Most devices use small IDs (1-10) or common ones like 100, 247, 255.
+        common_slaves = [1, 2, 3, 4, 5, 10, 100, 247, 255]
+        
+        total_steps = len(common_bauds) * len(common_parities) * len(common_slaves)
+        current_step = 0
+        
+        def _emit_log(msg, level="INFO"):
+            if log_callback: log_callback(msg)
+            if global_logger:
+                if level == "INFO": global_logger.info(msg, "Diagnostic")
+                elif level == "WARNING": global_logger.warning(msg, "Diagnostic")
+                elif level == "ERROR": global_logger.error(msg, "Diagnostic")
+
+        _emit_log(f"🕵️ Starting Deep Hardware Diagnostic on {port}...", "INFO")
+        
+        for baud in common_bauds:
+            for parity in common_parities:
+                if self._stop_requested: break
+                
+                _emit_log(f"🔎 Testing configuration: {baud} baud, Parity={parity}...")
+                
+                client = ModbusSerialClient(
+                    port=port,
+                    baudrate=baud,
+                    parity=parity,
+                    timeout=0.5, # Short timeout for sweep
+                    stopbits=1,
+                    bytesize=8
+                )
+                
+                try:
+                    if not client.connect():
+                        _emit_log(f"❌ Failed to open port {port}. Is it in use?", "ERROR")
+                        return None
+                    
+                    for slave in common_slaves:
+                        if self._stop_requested: break
+                        current_step += 1
+                        if progress_callback: progress_callback(current_step, total_steps)
+                        
+                        if log_callback: log_callback(f"   Trying Slave ID {slave}...")
+                        
+                        # Try reading address 0 (Holding)
+                        res = client.read_holding_registers(address=0, count=1, slave=slave)
+                        if not res.isError():
+                            _emit_log(f"🎉 FOUND DEVICE! Baud={baud}, Parity={parity}, Slave={slave}", "INFO")
+                            client.close()
+                            return {"baud": baud, "parity": parity, "slave": slave, "port": port}
+                        
+                        # Give adapter a tiny break
+                        time.sleep(0.01)
+                        
+                    client.close()
+                except Exception as e:
+                    _emit_log(f"⚠️ Error on configs: {e}", "WARNING")
+                finally:
+                    client.close()
+                    
+        _emit_log("🏁 Deep Scan finished. No device found. Check wiring (A/B) and power.", "WARNING")
+        return None
