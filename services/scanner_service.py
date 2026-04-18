@@ -250,18 +250,33 @@ class ScannerService:
         return results
 
     def discover_registers(self, client_params: Dict[str, Any], start: int = 0, count: int = 100, fc: int = 3, 
-                           progress_callback: Optional[Callable[[int, int], None]] = None) -> List[Dict[str, Any]]:
+                           progress_callback: Optional[Callable[[int, int], None]] = None,
+                           log_callback: Optional[Callable[[str], None]] = None) -> List[Dict[str, Any]]:
         """Identify which registers are active in a given range."""
         found = []
         self._stop_requested = False
+        slave = client_params.get("slave_id", 1)
         
+        if log_callback:
+            log_callback(f"Starting discovery: Start={start}, Count={count}, FC={fc}, Slave={slave}")
+            
+        # Emit initial progress
+        if progress_callback:
+            progress_callback(0, count)
+
         # Create a temporary client for discovery
         if "ip_address" in client_params:
-            client = ModbusTcpClient(host=client_params["ip_address"], port=client_params.get("port", 502), timeout=1.0)
+            host = client_params["ip_address"]
+            port = client_params.get("port", 502)
+            if log_callback: log_callback(f"Connecting to TCP {host}:{port}...")
+            client = ModbusTcpClient(host=host, port=port, timeout=1.0)
         else:
+            p = client_params["port"]
+            b = client_params["baud_rate"]
+            if log_callback: log_callback(f"Connecting to RTU {p} at {b} baud...")
             client = ModbusSerialClient(
-                port=client_params["port"], 
-                baudrate=client_params["baud_rate"],
+                port=p, 
+                baudrate=b,
                 timeout=1.0,
                 parity=client_params.get("parity", 'N'),
                 stopbits=client_params.get("stop_bits", 1),
@@ -270,32 +285,56 @@ class ScannerService:
 
         try:
             if not client.connect():
+                msg = f"Failed to connect to {client_params.get('ip_address') or client_params.get('port')}"
+                if log_callback: log_callback(f"❌ {msg}")
+                self.logger.error(msg)
                 return []
+
+            if log_callback: log_callback("✅ Connected. Scanning registers...")
 
             # We'll read one by one to pinpoint exactly where data exists
             for i in range(start, start + count):
                 if self._stop_requested:
+                    if log_callback: log_callback("🛑 Scan stopped by user.")
                     break
+                
+                # Update progress BEFORE the attempt to show we are starting a new one
+                if progress_callback:
+                    progress_callback(i - start, count)
+                
+                if log_callback:
+                    log_callback(f"Probing address {i}...")
                     
                 try:
                     if fc == 3:
-                        res = client.read_holding_registers(address=i, count=1, slave=1)
+                        res = client.read_holding_registers(address=i, count=1, slave=slave)
                     elif fc == 4:
-                        res = client.read_input_registers(address=i, count=1, slave=1)
+                        res = client.read_input_registers(address=i, count=1, slave=slave)
                     else:
                         break
                     
                     if not res.isError():
+                        val = res.registers[0]
                         found.append({
                             "address": i,
-                            "value": res.registers[0],
+                            "value": val,
                             "type": "Holding" if fc == 3 else "Input"
                         })
-                except Exception:
-                    pass
+                        if log_callback: log_callback(f"✅ FOUND: Addr {i} = {val}")
+                    else:
+                        # Log the specific Modbus error if available
+                        err_msg = str(res)
+                        if log_callback: log_callback(f"❌ Addr {i}: Modbus Error ({err_msg})")
+                except Exception as e:
+                    if log_callback:
+                        log_callback(f"⚠️ Addr {i}: No response or Timeout ({str(e)})")
                     
+                # Update progress AFTER the attempt as well
                 if progress_callback:
                     progress_callback(i - start + 1, count)
+            
+            if log_callback:
+                log_callback(f"✨ Scan complete. Found {len(found)} registers.")
         finally:
             client.close()
                 

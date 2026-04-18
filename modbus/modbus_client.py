@@ -40,10 +40,10 @@ class ModbusClientBase(ABC):
                 return None
 
             if result.isError():
-                self.logger.error(f"Modbus error reading {count} registers at {address} from {self.device.name}.")
+                self.logger.error(f"Modbus Error: Device '{self.device.name}' (Slave {slave}) failed to read address {address}. Error: {result}")
                 return None
 
             return result.registers
         except Exception as e:
-            self.logger.error(f"Exception reading registers from {self.device.name}: {e}")
+            self.logger.error(f"Timeout/Exception: Device '{self.device.name}' (Slave {slave}) failed at address {address}: {str(e)}")
             return None

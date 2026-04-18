@@ -224,16 +224,18 @@ class RegisterManagerWidget(QWidget):
         device = devices[names.index(name)]
         
         # Prepare params for scanner
-        params = {}
+        params = {
+            "slave_id": device.slave_id
+        }
         if device.connection_type == "TCP":
-            params = {"ip_address": device.ip_address, "port": device.port}
+            params.update({"ip_address": device.ip_address, "port": device.port})
         else:
-            params = {
+            params.update({
                 "port": device.com_port, 
                 "baud_rate": device.baud_rate,
                 "parity": device.parity,
                 "stop_bits": device.stop_bits
-            }
+            })
             
         dialog = RegisterDiscoveryDialog(device.id, params, self.db, self)
         dialog.registers_added.connect(self.load_data)
