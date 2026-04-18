@@ -264,6 +264,8 @@ class RegisterManagerWidget(QWidget):
         port = rtu_devices[0].com_port
         dialog = HardwareDiagnosticDialog(port, self.logger, self)
         dialog.exec()
+
+    def on_import(self):
         file, _ = QFileDialog.getOpenFileName(self, "Open Excel File", "", "Excel Files (*.xlsx *.xls)")
         if not file: return
         
