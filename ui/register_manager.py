@@ -237,10 +237,13 @@ class RegisterManagerWidget(QWidget):
                 "stop_bits": device.stop_bits
             })
             
-        dialog = RegisterDiscoveryDialog(device.id, params, self.db, self)
+        dialog = RegisterDiscoveryDialog(device.id, params, self.db, self.logger, self)
         dialog.registers_added.connect(self.load_data)
         dialog.registers_added.connect(self.registers_changed.emit)
-        dialog.exec()
+        dialog.setModal(False) # Ensure non-blocking
+        dialog.show()
+        # Keep reference to prevent GC
+        self._discover_dialog = dialog
 
     def on_import(self):
         file, _ = QFileDialog.getOpenFileName(self, "Open Excel File", "", "Excel Files (*.xlsx *.xls)")

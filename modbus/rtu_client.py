@@ -28,6 +28,9 @@ class RTUClient(ModbusClientBase):
                 self.logger.info(f"Connected to RTU device '{self.device.name}' on {self.port}.")
             else:
                 self.logger.warning(f"Failed to connect to RTU device '{self.device.name}' on {self.port}.")
+            # Some USB-Serial adapters need a moment to stabilize
+            import time
+            time.sleep(0.2)
             return self.is_connected
         except Exception as e:
             self.logger.error(f"Exception connecting to RTU device '{self.device.name}': {e}")

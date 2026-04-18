@@ -1,3 +1,4 @@
+from typing import Any, Optional, List
 from PySide6.QtCore import QThread, Signal, Qt
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, 
@@ -13,13 +14,14 @@ class RegisterWorker(QThread):
     new_log = Signal(str)
     finished = Signal(list)
     
-    def __init__(self, scanner: ScannerService, client_params: dict, start: int, count: int, fc: int):
+    def __init__(self, scanner: ScannerService, client_params: dict, start: int, count: int, fc: int, global_logger: Any = None):
         super().__init__()
         self.scanner = scanner
         self.client_params = client_params
         self.start_addr = start
         self.count = count
         self.fc = fc
+        self.global_logger = global_logger
 
     def run(self):
         def progress_cb(current, total):
@@ -29,14 +31,14 @@ class RegisterWorker(QThread):
             self.new_log.emit(msg)
             
         results = self.scanner.discover_registers(
-            self.client_params, self.start_addr, self.count, self.fc, progress_cb, log_cb
+            self.client_params, self.start_addr, self.count, self.fc, progress_cb, log_cb, self.global_logger
         )
         self.finished.emit(results)
 
 class RegisterDiscoveryDialog(QDialog):
     registers_added = Signal()
     
-    def __init__(self, device_id: int, client_params: dict, db: SQLiteManager, parent=None):
+    def __init__(self, device_id: int, client_params: dict, db: SQLiteManager, logger: Any = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Register Auto-Discovery")
         self.resize(700, 650)
@@ -44,6 +46,7 @@ class RegisterDiscoveryDialog(QDialog):
         self.device_id = device_id
         self.client_params = client_params
         self.db = db
+        self.logger = logger
         self.scanner = ScannerService()
         self.found_registers = []
         
@@ -73,6 +76,7 @@ class RegisterDiscoveryDialog(QDialog):
         
         settings_layout.addWidget(QLabel("Type:"))
         self.type_combo = QComboBox()
+        self.type_combo.addItem("Auto (Both FC 03 & 04)", 0) # New Power Scan mode
         self.type_combo.addItem("Holding (FC 03)", 3)
         self.type_combo.addItem("Input (FC 04)", 4)
         settings_layout.addWidget(self.type_combo)
@@ -145,7 +149,12 @@ class RegisterDiscoveryDialog(QDialog):
         
         self.client_params["slave_id"] = slave
         
-        self.worker = RegisterWorker(self.scanner, self.client_params, start, count, fc)
+        # Start Progress at 0 IMMEDIATELY
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.add_log("Initializing discovery worker...")
+        
+        self.worker = RegisterWorker(self.scanner, self.client_params, start, count, fc, self.logger)
         self.worker.progress.connect(self.on_progress)
         self.worker.new_log.connect(self.add_log)
         self.worker.finished.connect(self.on_finished)

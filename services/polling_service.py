@@ -24,6 +24,7 @@ class PollingService(QThread):
         self.poll_interval_ms = poll_interval_ms
         self._is_running = False
         self._mutex = QMutex()
+        self._failure_counts = {} # device_id -> count
 
     def run(self):
         with QMutexLocker(self._mutex):
@@ -56,6 +57,9 @@ class PollingService(QThread):
             device = client.device
             device_id = device.id
             
+            if device_id not in self._failure_counts:
+                self._failure_counts[device_id] = 0
+            
             was_connected = client.is_connected
             
             # Check connection, reconnect if needed
@@ -75,12 +79,7 @@ class PollingService(QThread):
             if not registers:
                 continue
 
-            # In a production app, we would batch reads into single requests (e.g. read consecutive registers)
-            # For simplicity, we can read them sequentially. PyModbus handles short contiguous loops quickly enough locally,
-            # but to ensure strict adherence to "professional build" we should ideally batch.
-            # To keep it reliable first, we will iterate and poll individually.
-            # (In a true SCADA app with 10k registers we batch. Here with few gases + temp, individual is fine for v1.)
-            
+            device_failed = False
             for reg in registers:
                 if not self.is_running():
                     break
@@ -95,29 +94,29 @@ class PollingService(QThread):
                 )
                 
                 if raw_data:
+                    # Success: reset failure count
+                    self._failure_counts[device_id] = 0
                     try:
-                        # Parse
                         parsed_val = ModbusParser.parse(raw_data, reg.data_type)
-                        # Scale
                         final_val = parsed_val * reg.scaling_factor
-                        
                         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        
-                        # Emit to UI
                         self.data_polled.emit(timestamp, device_id, reg.id, final_val)
-                        
-                        # Save to DB
                         self.db.add_history(device_id, reg.id, final_val)
-                        
                     except Exception as e:
                         self.logger.error(f"Error parsing data for device {device.name} reg {reg.name}: {e}", "PollingService")
                 else:
-                    self.logger.warning(f"Failed to read register {reg.name} on {device.name}", "PollingService")
-                    # Emitting failure state could also trigger a disconnection event if it fails multiple times
-                    # For now, mark as disconnected if read fails (simple error handling)
-                    client.disconnect()
-                    self.connection_status_changed.emit(device_id, False)
-                    break # Stop reading further registers for this disconnected device
+                    self._failure_counts[device_id] += 1
+                    self.logger.warning(f"Failed to read register {reg.name} on {device.name} (Attempt {self._failure_counts[device_id]}/3)", "PollingService")
+                    
+                    if self._failure_counts[device_id] >= 3:
+                        self.logger.error(f"Device '{device.name}' failed 3 consecutive reads. Disconnecting.", "PollingService")
+                        client.disconnect()
+                        self.connection_status_changed.emit(device_id, False)
+                        device_failed = True
+                        break # Stop reading further registers for this device
+            
+            if device_failed:
+                continue
 
     def stop(self):
         with QMutexLocker(self._mutex):
