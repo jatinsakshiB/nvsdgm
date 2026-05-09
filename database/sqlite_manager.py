@@ -33,6 +33,7 @@ class SQLiteManager:
                     stop_bits INTEGER,
                     ip_address TEXT,
                     port INTEGER,
+                    slave_id INTEGER DEFAULT 1
                 )
             ''')
             
