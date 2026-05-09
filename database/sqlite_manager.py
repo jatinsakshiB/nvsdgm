@@ -122,7 +122,8 @@ class SQLiteManager:
                 id=row['id'], name=row['name'], connection_type=row['connection_type'], is_enabled=bool(row['is_enabled']),
                 com_port=row['com_port'], baud_rate=row['baud_rate'], parity=row['parity'], stop_bits=row['stop_bits'],
                 ip_address=row['ip_address'], port=row['port'], slave_id=row['slave_id'],
-                byte_order=row.get('byte_order', 'BIG'), word_order=row.get('word_order', 'BIG')
+                byte_order=row['byte_order'] if 'byte_order' in row.keys() else 'BIG',
+                word_order=row['word_order'] if 'word_order' in row.keys() else 'BIG'
             ) for row in rows]
             
     def delete_device(self, device_id: int):
