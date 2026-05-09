@@ -103,7 +103,7 @@ class MainWindow(QMainWindow):
         # Buttons
         self.btn_dashboard = QPushButton("Dashboard")
         self.btn_devices = QPushButton("Devices")
-        self.btn_registers = QPushButton("Registers")
+        self.btn_registers = QPushButton("Addresses")
         self.btn_charts = QPushButton("Charts")
         self.btn_logs = QPushButton("Logs")
         
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         self.page_registers.registers_changed.connect(self.on_registers_changed)
         
         self.logger.new_log.connect(self.page_logs.on_new_log)
-        self.polling_service.data_polled.connect(self.page_dashboard.on_data_polled)
+        self.polling_service.raw_data_polled.connect(self.page_dashboard.on_raw_data_polled)
         self.polling_service.data_polled.connect(self.page_charts.on_data_polled)
         
         self.polling_service.connection_status_changed.connect(self.page_dashboard.on_connection_status_changed)

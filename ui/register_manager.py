@@ -13,7 +13,7 @@ import pandas as pd
 class RegisterDialog(QDialog):
     def __init__(self, db: SQLiteManager, register: Register = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Register Configuration")
+        self.setWindowTitle("Address Configuration")
         self.setMinimumWidth(400)
         self.db = db
         self.register = register
@@ -109,11 +109,11 @@ class RegisterManagerWidget(QWidget):
         
         # Toolbar
         toolbar = QHBoxLayout()
-        add_btn = QPushButton("Add Register")
+        add_btn = QPushButton("Add Address")
         add_btn.clicked.connect(self.on_add)
-        edit_btn = QPushButton("Edit Register")
+        edit_btn = QPushButton("Edit Address")
         edit_btn.clicked.connect(self.on_edit)
-        del_btn = QPushButton("Delete Register")
+        del_btn = QPushButton("Delete Address")
         del_btn.clicked.connect(self.on_delete)
         import_btn = QPushButton("Import Excel")
         import_btn.clicked.connect(self.on_import)
@@ -208,7 +208,7 @@ class RegisterManagerWidget(QWidget):
         if not sel: return
         reg_id = int(self.table.item(sel[0].row(), 0).text())
         
-        reply = QMessageBox.question(self, "Delete", f"Are you sure you want to delete Register ID {reg_id}?",
+        reply = QMessageBox.question(self, "Delete", f"Are you sure you want to delete Address ID {reg_id}?",
                                      QMessageBox.Yes | QMessageBox.No)
         if reply == QMessageBox.Yes:
             self.db.delete_register(reg_id)
@@ -324,7 +324,7 @@ class RegisterManagerWidget(QWidget):
                 reg.validate()
                 self.db.add_register(reg)
                 
-            QMessageBox.information(self, "Success", "Registers imported successfully.")
+            QMessageBox.information(self, "Success", "Addresses imported successfully.")
             self.load_data()
             self.registers_changed.emit()
             

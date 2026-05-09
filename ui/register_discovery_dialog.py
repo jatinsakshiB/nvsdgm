@@ -1,5 +1,5 @@
 from typing import Any, Optional, List
-from PySide6.QtCore import QThread, Signal, Qt
+from PySide6.QtCore import QThread, Signal, Qt, QTime
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget, 
     QTableWidgetItem, QHeaderView, QProgressBar, QLabel, QSpinBox,
@@ -40,7 +40,7 @@ class RegisterDiscoveryDialog(QDialog):
     
     def __init__(self, device_id: int, client_params: dict, db: SQLiteManager, logger: Any = None, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Register Auto-Discovery")
+        self.setWindowTitle("Address Auto-Discovery")
         self.resize(700, 650)
         
         self.device_id = device_id
@@ -116,7 +116,7 @@ class RegisterDiscoveryDialog(QDialog):
         
         # Actions
         btn_layout = QHBoxLayout()
-        self.add_btn = QPushButton("Add Selected Registers")
+        self.add_btn = QPushButton("Add Selected Addresses")
         self.add_btn.setEnabled(False)
         self.add_btn.clicked.connect(self.add_selected)
         btn_layout.addWidget(self.add_btn)
@@ -130,7 +130,8 @@ class RegisterDiscoveryDialog(QDialog):
         self.worker = None
 
     def add_log(self, msg):
-        self.log_display.append(f"[{Qt.format_time(Qt.LocalTime, 'HH:mm:ss')}] {msg}")
+        current_time = QTime.currentTime().toString("HH:mm:ss")
+        self.log_display.append(f"[{current_time}] {msg}")
         # Auto-scroll to bottom
         self.log_display.verticalScrollBar().setValue(self.log_display.verticalScrollBar().maximum())
 
@@ -178,7 +179,7 @@ class RegisterDiscoveryDialog(QDialog):
         self.scan_btn.setStyleSheet("background-color: #238636; color: white; font-weight: bold; padding: 5px 15px;")
         
         if not results and not self.scanner._stop_requested:
-            self.add_log("❌ No registers found or connection failed. Check your Slave ID and connection settings.")
+            self.add_log("❌ No addresses found or connection failed. Check your Slave ID and connection settings.")
             self.trouble_btn.setVisible(True)
             
         self.update_table()
@@ -232,6 +233,6 @@ class RegisterDiscoveryDialog(QDialog):
                 added_count += 1
                 
         if added_count > 0:
-            QMessageBox.information(self, "Success", f"Added {added_count} registers successfully.")
+            QMessageBox.information(self, "Success", f"Added {added_count} addresses successfully.")
             self.registers_added.emit()
             self.close()

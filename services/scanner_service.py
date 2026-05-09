@@ -345,6 +345,8 @@ class ScannerService:
             _emit_log(f"🏁 Discovery Finished. Found {len(found)} active addresses.")
         finally:
             client.close()
+            
+        return found
                 
     def diagnostic_sweep(self, port: str, 
                          progress_callback: Optional[Callable[[int, int], None]] = None,

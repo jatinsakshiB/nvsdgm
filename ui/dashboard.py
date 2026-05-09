@@ -1,7 +1,8 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout, QComboBox
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QTableWidget, QTableWidgetItem, QHeaderView
 from PySide6.QtCore import Slot, Qt
 from database.sqlite_manager import SQLiteManager
 from services.device_service import DeviceService
+from modbus.parser import ModbusParser
 
 class DashboardWidget(QWidget):
     def __init__(self, db: SQLiteManager, device_service: DeviceService, parent=None):
@@ -10,8 +11,8 @@ class DashboardWidget(QWidget):
         self.device_service = device_service
         self.current_device_id = None
         
-        # UI Elements Map: Register ID -> QLabel for value
-        self.value_labels = {}
+        # UI Elements Map: Register ID -> row index
+        self.row_map = {}
         
         layout = QVBoxLayout(self)
         
@@ -28,10 +29,15 @@ class DashboardWidget(QWidget):
         top_bar.addWidget(self.status_label)
         layout.addLayout(top_bar)
         
-        # Grid for Live Cards
-        self.grid_layout = QGridLayout()
-        layout.addLayout(self.grid_layout)
-        layout.addStretch()
+        # Table for Live Data
+        self.table = QTableWidget()
+        self.columns = ["Address", "Name", "Unit", "int16", "uint16", "int32", "uint32", "float16", "float32"]
+        self.table.setColumnCount(len(self.columns))
+        self.table.setHorizontalHeaderLabels(self.columns)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setSelectionMode(QTableWidget.SingleSelection)
+        layout.addWidget(self.table)
         
         self.refresh_devices()
 
@@ -45,58 +51,41 @@ class DashboardWidget(QWidget):
         
         if self.device_combo.count() > 0:
             self.current_device_id = self.device_combo.currentData()
-            self._build_cards()
+            self._build_table()
+        else:
+            self.table.setRowCount(0)
+            self.row_map.clear()
         self.device_combo.blockSignals(False)
 
     def on_device_selected(self, index):
         if index >= 0:
             self.current_device_id = self.device_combo.itemData(index)
-            self._build_cards()
+            self._build_table()
 
-    def _build_cards(self):
-        # Clear grid
-        while self.grid_layout.count():
-            child = self.grid_layout.takeAt(0)
-            if child.widget():
-                child.widget().deleteLater()
-                
-        self.value_labels.clear()
+    def _build_table(self):
+        self.table.setRowCount(0)
+        self.row_map.clear()
 
         if not self.current_device_id:
             return
 
         registers = self.db.get_registers(self.current_device_id)
         
-        row, col = 0, 0
         for reg in registers:
-            card = QFrame()
-            card.setFrameShape(QFrame.StyledPanel)
-            card.setStyleSheet("background-color: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px;")
-            card_layout = QVBoxLayout(card)
+            row = self.table.rowCount()
+            self.table.insertRow(row)
             
-            title = QLabel(reg.name)
-            title.setStyleSheet("color: #8b949e; font-size: 14px; font-weight: 600; text-transform: uppercase;")
-            title.setAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 0, QTableWidgetItem(str(reg.address)))
+            self.table.setItem(row, 1, QTableWidgetItem(reg.name))
+            self.table.setItem(row, 2, QTableWidgetItem(reg.unit))
             
-            value = QLabel("---")
-            value.setStyleSheet("color: #58a6ff; font-size: 32px; font-weight: bold;")
-            value.setAlignment(Qt.AlignCenter)
+            # Init empty items for values
+            for col in range(3, len(self.columns)):
+                item = QTableWidgetItem("---")
+                item.setTextAlignment(Qt.AlignCenter)
+                self.table.setItem(row, col, item)
             
-            unit = QLabel(reg.unit)
-            unit.setStyleSheet("color: #8b949e; font-size: 13px;")
-            unit.setAlignment(Qt.AlignCenter)
-            
-            card_layout.addWidget(title)
-            card_layout.addWidget(value)
-            card_layout.addWidget(unit)
-            
-            self.grid_layout.addWidget(card, row, col)
-            self.value_labels[reg.id] = (value, reg.unit)
-            
-            col += 1
-            if col > 3:
-                col = 0
-                row += 1
+            self.row_map[reg.id] = row
 
     @Slot(int, bool)
     def on_connection_status_changed(self, device_id: int, is_connected: bool):
@@ -107,11 +96,28 @@ class DashboardWidget(QWidget):
             else:
                 self.status_label.setText("Status: Disconnected / Error")
                 self.status_label.setStyleSheet("color: #f85149; font-weight: bold; font-size: 14px;")
-                # If disconnected, maybe show "---" or keep last value
-                
-    @Slot(str, int, int, float)
-    def on_data_polled(self, timestamp: str, device_id: int, register_id: int, value: float):
+
+    @Slot(str, int, int, object)
+    def on_raw_data_polled(self, timestamp: str, device_id: int, register_id: int, raw_data: list):
         if device_id == self.current_device_id:
-            if register_id in self.value_labels:
-                label, unit = self.value_labels[register_id]
-                label.setText(f"{value:.2f}")
+            if register_id in self.row_map:
+                row = self.row_map[register_id]
+                
+                # Parse all formats
+                results = ModbusParser.parse_all(raw_data)
+                
+                # Update cells
+                for i, col_name in enumerate(self.columns[3:], start=3):
+                    val = results.get(col_name)
+                    item = self.table.item(row, i)
+                    if item:
+                        if val is not None:
+                            # Try to find scaling factor from register config
+                            # For simplicity we just show raw unscaled interpretations here,
+                            # or we could fetch scaling from db.
+                            # For now, display parsed value directly.
+                            item.setText(f"{val:.2f}")
+                            item.setForeground(Qt.white)
+                        else:
+                            item.setText("N/A")
+                            item.setForeground(Qt.gray)

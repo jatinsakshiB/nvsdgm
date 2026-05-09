@@ -9,9 +9,11 @@ from services.logging_service import AppLogger
 from modbus.parser import ModbusParser
 
 class PollingService(QThread):
-    # Signals
     # timestamp, device_id, register_id, value
     data_polled = Signal(str, int, int, float)
+    
+    # timestamp, device_id, register_id, raw_registers_list
+    raw_data_polled = Signal(str, int, int, object)
     
     # device_id, status (True for connected, False for disconnected)
     connection_status_changed = Signal(int, bool)
@@ -84,7 +86,8 @@ class PollingService(QThread):
                 if not self.is_running():
                     break
                     
-                reg_count = ModbusParser.get_register_count(reg.data_type)
+                # Fetch at least 2 registers to allow parsing 32-bit types in the UI dashboard
+                reg_count = max(2, ModbusParser.get_register_count(reg.data_type))
                 
                 # Read from Modbus
                 raw_data = client.read_registers(
@@ -101,6 +104,7 @@ class PollingService(QThread):
                         final_val = parsed_val * reg.scaling_factor
                         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         self.data_polled.emit(timestamp, device_id, reg.id, final_val)
+                        self.raw_data_polled.emit(timestamp, device_id, reg.id, raw_data)
                         self.db.add_history(device_id, reg.id, final_val)
                     except Exception as e:
                         self.logger.error(f"Error parsing data for device {device.name} reg {reg.name}: {e}", "PollingService")
