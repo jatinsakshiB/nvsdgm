@@ -1,4 +1,6 @@
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QTableWidget, QTableWidgetItem, QHeaderView
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit
+from PySide6.QtCore import Slot, Qt, QTimer
+from PySide6.QtGui import QColor
 from PySide6.QtCore import Slot, Qt
 from database.sqlite_manager import SQLiteManager
 from services.device_service import DeviceService
@@ -14,6 +16,9 @@ class DashboardWidget(QWidget):
         # UI Elements Map: Register ID -> row index
         self.row_map = {}
         
+        # Previous values Map: Register ID -> col_name -> value
+        self.previous_values = {}
+        
         layout = QVBoxLayout(self)
         
         # Top Bar
@@ -28,6 +33,15 @@ class DashboardWidget(QWidget):
         top_bar.addStretch()
         top_bar.addWidget(self.status_label)
         layout.addLayout(top_bar)
+        
+        # Search Bar
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("Search:"))
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search by Address, Name, or Value...")
+        self.search_input.textChanged.connect(self.on_search)
+        search_layout.addWidget(self.search_input)
+        layout.addLayout(search_layout)
         
         # Table for Live Data
         self.table = QTableWidget()
@@ -65,9 +79,15 @@ class DashboardWidget(QWidget):
     def _build_table(self):
         self.table.setRowCount(0)
         self.row_map.clear()
+        self.previous_values.clear()
 
         if not self.current_device_id:
             return
+
+        # Check initial connection status
+        client = self.device_service.get_client(self.current_device_id)
+        is_connected = client.is_connected if client else False
+        self.on_connection_status_changed(self.current_device_id, is_connected)
 
         registers = self.db.get_registers(self.current_device_id)
         
@@ -86,6 +106,10 @@ class DashboardWidget(QWidget):
                 self.table.setItem(row, col, item)
             
             self.row_map[reg.id] = row
+            self.previous_values[reg.id] = {}
+            
+        # Re-apply search if exists
+        self.on_search(self.search_input.text())
 
     @Slot(int, bool)
     def on_connection_status_changed(self, device_id: int, is_connected: bool):
@@ -96,6 +120,18 @@ class DashboardWidget(QWidget):
             else:
                 self.status_label.setText("Status: Disconnected / Error")
                 self.status_label.setStyleSheet("color: #f85149; font-weight: bold; font-size: 14px;")
+
+    @Slot(str)
+    def on_search(self, text):
+        search_text = text.lower()
+        for row in range(self.table.rowCount()):
+            match = False
+            for col in range(self.table.columnCount()):
+                item = self.table.item(row, col)
+                if item and search_text in item.text().lower():
+                    match = True
+                    break
+            self.table.setRowHidden(row, not match)
 
     @Slot(str, int, int, object)
     def on_raw_data_polled(self, timestamp: str, device_id: int, register_id: int, raw_data: list):
@@ -112,10 +148,19 @@ class DashboardWidget(QWidget):
                     item = self.table.item(row, i)
                     if item:
                         if val is not None:
-                            # Try to find scaling factor from register config
-                            # For simplicity we just show raw unscaled interpretations here,
-                            # or we could fetch scaling from db.
-                            # For now, display parsed value directly.
+                            # Determine blink color
+                            prev_val = self.previous_values[register_id].get(col_name)
+                            if prev_val is not None and val != prev_val:
+                                if val > prev_val:
+                                    item.setBackground(QColor("#1e4620")) # Dark Green
+                                else:
+                                    item.setBackground(QColor("#4e1c1c")) # Dark Red
+                                
+                                # Setup timer to clear background
+                                QTimer.singleShot(500, lambda it=item: it.setBackground(QColor("transparent")) if it else None)
+                                
+                            self.previous_values[register_id][col_name] = val
+                            
                             item.setText(f"{val:.2f}")
                             item.setForeground(Qt.white)
                         else:
