@@ -33,9 +33,19 @@ class SQLiteManager:
                     stop_bits INTEGER,
                     ip_address TEXT,
                     port INTEGER,
-                    slave_id INTEGER DEFAULT 1
                 )
             ''')
+            
+            # Add new columns if they don't exist
+            try:
+                cursor.execute('ALTER TABLE devices ADD COLUMN byte_order TEXT DEFAULT "BIG"')
+            except sqlite3.OperationalError:
+                pass # Column exists
+                
+            try:
+                cursor.execute('ALTER TABLE devices ADD COLUMN word_order TEXT DEFAULT "BIG"')
+            except sqlite3.OperationalError:
+                pass # Column exists
             
             # Registers Table
             cursor.execute('''
@@ -84,9 +94,9 @@ class SQLiteManager:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                INSERT INTO devices (name, connection_type, is_enabled, com_port, baud_rate, parity, stop_bits, ip_address, port, slave_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (device.name, device.connection_type, device.is_enabled, device.com_port, device.baud_rate, device.parity, device.stop_bits, device.ip_address, device.port, device.slave_id))
+                INSERT INTO devices (name, connection_type, is_enabled, com_port, baud_rate, parity, stop_bits, ip_address, port, slave_id, byte_order, word_order)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (device.name, device.connection_type, device.is_enabled, device.com_port, device.baud_rate, device.parity, device.stop_bits, device.ip_address, device.port, device.slave_id, device.byte_order, device.word_order))
             conn.commit()
             return cursor.lastrowid
 
@@ -97,9 +107,9 @@ class SQLiteManager:
             cursor = conn.cursor()
             cursor.execute('''
                 UPDATE devices SET 
-                    name=?, connection_type=?, is_enabled=?, com_port=?, baud_rate=?, parity=?, stop_bits=?, ip_address=?, port=?, slave_id=?
+                    name=?, connection_type=?, is_enabled=?, com_port=?, baud_rate=?, parity=?, stop_bits=?, ip_address=?, port=?, slave_id=?, byte_order=?, word_order=?
                 WHERE id=?
-            ''', (device.name, device.connection_type, device.is_enabled, device.com_port, device.baud_rate, device.parity, device.stop_bits, device.ip_address, device.port, device.slave_id, device.id))
+            ''', (device.name, device.connection_type, device.is_enabled, device.com_port, device.baud_rate, device.parity, device.stop_bits, device.ip_address, device.port, device.slave_id, device.byte_order, device.word_order, device.id))
             conn.commit()
 
     def get_devices(self) -> List[Device]:
@@ -110,7 +120,8 @@ class SQLiteManager:
             return [Device(
                 id=row['id'], name=row['name'], connection_type=row['connection_type'], is_enabled=bool(row['is_enabled']),
                 com_port=row['com_port'], baud_rate=row['baud_rate'], parity=row['parity'], stop_bits=row['stop_bits'],
-                ip_address=row['ip_address'], port=row['port'], slave_id=row['slave_id']
+                ip_address=row['ip_address'], port=row['port'], slave_id=row['slave_id'],
+                byte_order=row.get('byte_order', 'BIG'), word_order=row.get('word_order', 'BIG')
             ) for row in rows]
             
     def delete_device(self, device_id: int):

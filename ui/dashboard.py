@@ -139,8 +139,15 @@ class DashboardWidget(QWidget):
             if register_id in self.row_map:
                 row = self.row_map[register_id]
                 
+                # Fetch device to get endianness
+                client = self.device_service.get_client(device_id)
+                device = client.device if client else None
+                from pymodbus.constants import Endian
+                b_order = Endian.LITTLE if getattr(device, 'byte_order', 'BIG') == 'LITTLE' else Endian.BIG
+                w_order = Endian.LITTLE if getattr(device, 'word_order', 'BIG') == 'LITTLE' else Endian.BIG
+                
                 # Parse all formats
-                results = ModbusParser.parse_all(raw_data)
+                results = ModbusParser.parse_all(raw_data, byteorder=b_order, wordorder=w_order)
                 
                 # Update cells
                 for i, col_name in enumerate(self.columns[3:], start=3):

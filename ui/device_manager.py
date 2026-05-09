@@ -46,6 +46,13 @@ class DeviceDialog(QDialog):
         layout.addRow("", self.enabled_chk)
         layout.addRow("Slave ID:", self.slave_input)
         
+        self.byte_order_combo = QComboBox()
+        self.byte_order_combo.addItems(["BIG", "LITTLE"])
+        self.word_order_combo = QComboBox()
+        self.word_order_combo.addItems(["BIG", "LITTLE"])
+        layout.addRow("Byte Order:", self.byte_order_combo)
+        layout.addRow("Word Order:", self.word_order_combo)
+        
         layout.addRow("--- TCP Settings ---", QWidget())
         layout.addRow("IP Address:", self.ip_input)
         layout.addRow("Port:", self.port_input)
@@ -97,6 +104,8 @@ class DeviceDialog(QDialog):
         self.type_combo.setCurrentText(self.device.connection_type)
         self.enabled_chk.setChecked(self.device.is_enabled)
         self.slave_input.setText(str(self.device.slave_id))
+        self.byte_order_combo.setCurrentText(self.device.byte_order)
+        self.word_order_combo.setCurrentText(self.device.word_order)
         
         if self.device.connection_type == "TCP":
             self.ip_input.setText(self.device.ip_address or "")
@@ -113,6 +122,8 @@ class DeviceDialog(QDialog):
             connection_type=self.type_combo.currentText(),
             is_enabled=self.enabled_chk.isChecked(),
             slave_id=int(self.slave_input.text() or 1),
+            byte_order=self.byte_order_combo.currentText(),
+            word_order=self.word_order_combo.currentText(),
             id=self.device.id if self.device else None
         )
         if dev.connection_type == "TCP":

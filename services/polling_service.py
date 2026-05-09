@@ -100,7 +100,11 @@ class PollingService(QThread):
                     # Success: reset failure count
                     self._failure_counts[device_id] = 0
                     try:
-                        parsed_val = ModbusParser.parse(raw_data, reg.data_type)
+                        from pymodbus.constants import Endian
+                        b_order = Endian.LITTLE if getattr(device, 'byte_order', 'BIG') == 'LITTLE' else Endian.BIG
+                        w_order = Endian.LITTLE if getattr(device, 'word_order', 'BIG') == 'LITTLE' else Endian.BIG
+
+                        parsed_val = ModbusParser.parse(raw_data, reg.data_type, byteorder=b_order, wordorder=w_order)
                         final_val = parsed_val * reg.scaling_factor
                         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         self.data_polled.emit(timestamp, device_id, reg.id, final_val)

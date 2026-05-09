@@ -19,6 +19,8 @@ class Device:
     
     # Common
     slave_id: int = 1
+    byte_order: str = 'BIG'  # 'BIG' or 'LITTLE'
+    word_order: str = 'BIG'  # 'BIG' or 'LITTLE'
     
     # DB ID
     id: Optional[int] = None
